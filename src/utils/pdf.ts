@@ -86,7 +86,11 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
   });
 
   getAllParishes(settings).forEach((parish) => {
-    const parishTotals = calculateCategoryTotals(incomes, transfers, settings, parish.id);
+    const automaticTotals = calculateCategoryTotals(incomes, transfers, settings, parish.id);
+    const manualTotals = month.manualParishTotals?.[parish.id] ?? {};
+    const parishTotals = parish.id === MAIN_PARISH_ID
+      ? automaticTotals
+      : Object.fromEntries(settings.categories.map((category) => [category.id, manualTotals[category.id] ?? automaticTotals[category.id] ?? 0]));
     const parishRemittance = calculateRemittance(parishTotals, settings);
     const redForm = calculateRedFormRows(parishTotals);
 

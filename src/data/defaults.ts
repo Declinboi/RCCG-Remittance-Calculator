@@ -29,7 +29,9 @@ export const defaultCategories: IncomeCategory[] = [
 ];
 
 export const defaultSettings: AppSettings = {
-  churchName: 'HOUSE OF TESTIMONY',
-  parishes: [{ id: 'houseOfPraise', name: 'HOUSE OF PRAISE PARISH' }],
+  churchName: 'HEADQUARTER CHURCH',
+  parishes: [],
+  activeProfileId: 'defaultProfile',
+  profiles: [{ id: 'defaultProfile', churchName: 'HEADQUARTER CHURCH', parishes: [], createdAt: '2026-01-01T00:00:00.000Z' }],
   categories: defaultCategories,
 };

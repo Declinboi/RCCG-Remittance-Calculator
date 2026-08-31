@@ -3,6 +3,7 @@ import { defaultSettings } from './data/defaults';
 import type {
   AppSettings,
   BackupPayload,
+  ChurchProfile,
   ExpenditureRecord,
   ImpressRecord,
   MonthlyRecord,
@@ -48,11 +49,21 @@ function normalizeSettings(settings?: AppSettings): AppSettings {
   const savedCategoryById = new Map(savedCategories.map((category) => [category.id, category]));
   const defaultCategoryIds = new Set(defaultSettings.categories.map((category) => category.id));
   const customCategories = savedCategories.filter((category) => !defaultCategoryIds.has(category.id) && category.id !== 'thanksgivingSpecial');
+  const churchName = settings?.churchName || defaultSettings.churchName;
+  const parishes = settings?.parishes ?? defaultSettings.parishes;
+  const existingProfiles = settings?.profiles ?? [];
+  const activeProfileId = settings?.activeProfileId || existingProfiles[0]?.id || 'defaultProfile';
+  const profiles: ChurchProfile[] = existingProfiles.length
+    ? existingProfiles.map((profile) => (profile.id === activeProfileId ? { ...profile, churchName, parishes } : profile))
+    : [{ id: activeProfileId, churchName, parishes, createdAt: new Date().toISOString() }];
 
   return {
     ...defaultSettings,
     ...(settings ?? {}),
-    parishes: settings?.parishes ?? defaultSettings.parishes,
+    churchName,
+    parishes,
+    activeProfileId,
+    profiles,
     categories: [
       ...defaultSettings.categories.map((category) => {
         const savedCategory = savedCategoryById.get(category.id);

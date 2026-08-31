@@ -36,6 +36,7 @@ import {
 } from './db';
 import type {
   AppSettings,
+  ChurchProfile,
   ExpenditureRecord,
   ImpressRecord,
   MonthlyRecord,
@@ -84,7 +85,7 @@ type ParishSummary = {
 };
 
 const emptyData: AppData = {
-  settings: { churchName: 'HOUSE OF TESTIMONY', parishes: [], categories: [] },
+  settings: { churchName: 'HEADQUARTER CHURCH', parishes: [], activeProfileId: 'defaultProfile', profiles: [], categories: [] },
   months: [],
   incomes: [],
   transfers: [],
@@ -116,6 +117,13 @@ function App() {
     notify('Action failed. Please try again.', 'error');
   }
 
+  function withActiveProfile(settings: AppSettings, churchName = settings.churchName, parishes = settings.parishes): AppSettings {
+    const profiles = settings.profiles.length
+      ? settings.profiles.map((profile) => (profile.id === settings.activeProfileId ? { ...profile, churchName, parishes } : profile))
+      : [{ id: settings.activeProfileId, churchName, parishes, createdAt: new Date().toISOString() }];
+    return { ...settings, churchName, parishes, profiles };
+  }
+
   async function refresh() {
     const next = await getAllData();
     next.months.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -128,15 +136,33 @@ function App() {
     refresh();
   }, []);
 
-  const selectedMonth = data.months.find((month) => month.id === selectedMonthId) ?? data.months[0];
+  const activeProfileId = data.settings.activeProfileId;
+  const legacyProfileId = data.settings.profiles[0]?.id ?? activeProfileId;
+  const profileMonths = useMemo(
+    () => data.months.filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId),
+    [activeProfileId, data.months, legacyProfileId],
+  );
+  const profileExpenditures = useMemo(
+    () => data.expenditures.filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId),
+    [activeProfileId, data.expenditures, legacyProfileId],
+  );
+  const profileImpress = useMemo(
+    () => data.impress.filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId),
+    [activeProfileId, data.impress, legacyProfileId],
+  );
+  const selectedMonth = profileMonths.find((month) => month.id === selectedMonthId) ?? profileMonths[0];
   const allParishes = useMemo(() => getAllParishes(data.settings), [data.settings]);
   const monthIncomes = useMemo(
-    () => data.incomes.filter((row) => row.monthId === selectedMonth?.id).sort((a, b) => a.date.localeCompare(b.date)),
-    [data.incomes, selectedMonth?.id],
+    () => data.incomes
+      .filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId && row.monthId === selectedMonth?.id)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    [activeProfileId, data.incomes, legacyProfileId, selectedMonth?.id],
   );
   const monthTransfers = useMemo(
-    () => data.transfers.filter((row) => row.monthId === selectedMonth?.id).sort((a, b) => a.date.localeCompare(b.date)),
-    [data.transfers, selectedMonth?.id],
+    () => data.transfers
+      .filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId && row.monthId === selectedMonth?.id)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    [activeProfileId, data.transfers, legacyProfileId, selectedMonth?.id],
   );
   const categoryTotals = useMemo(
     () => calculateCategoryTotals(monthIncomes, monthTransfers, data.settings),
@@ -149,7 +175,11 @@ function App() {
   const parishSummaries = useMemo(
     () =>
       allParishes.map((parish) => {
-        const totals = calculateCategoryTotals(monthIncomes, monthTransfers, data.settings, parish.id);
+        const automaticTotals = calculateCategoryTotals(monthIncomes, monthTransfers, data.settings, parish.id);
+        const manualTotals = selectedMonth?.manualParishTotals?.[parish.id] ?? {};
+        const totals = parish.id === MAIN_PARISH_ID
+          ? automaticTotals
+          : Object.fromEntries(data.settings.categories.map((category) => [category.id, manualTotals[category.id] ?? automaticTotals[category.id] ?? 0]));
         const redFormRows = calculateRedFormRows(totals);
         const remittanceRows = calculateRemittance(totals, data.settings);
         const totalIncome = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
@@ -168,14 +198,14 @@ function App() {
           redFormTotal: redFormRows.reduce((sum, row) => sum + row.amount, 0),
         };
       }),
-    [allParishes, data.settings, monthIncomes, monthTransfers],
+    [allParishes, data.settings, monthIncomes, monthTransfers, selectedMonth?.manualParishTotals],
   );
   const totalIncome = Object.values(categoryTotals).reduce((sum, amount) => sum + amount, 0);
   const totalTransfers = monthTransfers.reduce((sum, row) => sum + row.amountReceived, 0);
   const totalCashIncome = totalIncome - totalTransfers;
   const totalRemittance = remittanceRows.reduce((sum, row) => sum + row.amount, 0);
-  const totalExpenditure = data.expenditures.reduce((sum, row) => sum + row.amount, 0);
-  const impressLedger = calculateImpressLedger(data.impress);
+  const totalExpenditure = profileExpenditures.reduce((sum, row) => sum + row.amount, 0);
+  const impressLedger = calculateImpressLedger(profileImpress);
   const impressBalance = impressLedger.at(-1)?.balance ?? 0;
 
   async function handleCreateMonth(event: FormEvent<HTMLFormElement>) {
@@ -186,6 +216,7 @@ function App() {
     if (!heading) return;
     const month: MonthlyRecord = {
       id: makeId('month'),
+      profileId: activeProfileId,
       heading,
       status: 'active',
       createdAt: new Date().toISOString(),
@@ -232,6 +263,7 @@ function App() {
     const form = new FormData(formElement);
     const record: WeeklyIncome = {
       id: editingIncome?.id ?? makeId('income'),
+      profileId: activeProfileId,
       monthId: selectedMonth.id,
       parishId: String(form.get('parishId') ?? MAIN_PARISH_ID),
       date: String(form.get('date') ?? ''),
@@ -255,6 +287,7 @@ function App() {
     const form = new FormData(formElement);
     const record: TransferRecord = {
       id: editingTransfer?.id ?? makeId('transfer'),
+      profileId: activeProfileId,
       monthId: selectedMonth.id,
       parishId: String(form.get('parishId') ?? MAIN_PARISH_ID),
       name: String(form.get('name') ?? '').trim(),
@@ -279,6 +312,7 @@ function App() {
     const form = new FormData(formElement);
     const record: ExpenditureRecord = {
       id: editingExpense?.id ?? makeId('expense'),
+      profileId: activeProfileId,
       date: String(form.get('date') ?? ''),
       beneficiary: String(form.get('beneficiary') ?? '').trim(),
       purpose: String(form.get('purpose') ?? '').trim(),
@@ -301,6 +335,7 @@ function App() {
     const form = new FormData(formElement);
     const record: ImpressRecord = {
       id: editingImpress?.id ?? makeId('impress'),
+      profileId: activeProfileId,
       date: String(form.get('date') ?? ''),
       particulars: String(form.get('particulars') ?? '').trim(),
       debit: toAmount(form.get('debit')),
@@ -321,17 +356,94 @@ function App() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
-      await saveSettings({
-        churchName: String(form.get('churchName') ?? '').trim() || data.settings.churchName,
-        parishes: data.settings.parishes ?? [],
+      const churchName = String(form.get('churchName') ?? '').trim() || data.settings.churchName;
+      await saveSettings(withActiveProfile({
+        ...data.settings,
         categories: data.settings.categories.map((category) => ({
           ...category,
           remittanceRate: Number(form.get(`${category.id}.rate`) ?? category.remittanceRate),
           appliesToRemittance: form.get(`${category.id}.enabled`) === 'on',
         })),
-      });
+      }, churchName, data.settings.parishes ?? []));
       await refresh();
-      notify('Calculation rules saved.');
+      notify('Church profile and rules saved.');
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function handleCreateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const churchName = String(form.get('profileChurchName') ?? '').trim();
+    if (!churchName) return;
+    const profile: ChurchProfile = {
+      id: makeId('profile'),
+      churchName,
+      parishes: [],
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await saveSettings({
+        ...data.settings,
+        churchName,
+        parishes: [],
+        activeProfileId: profile.id,
+        profiles: [...data.settings.profiles, profile],
+      });
+      setEditingParish(null);
+      setSelectedMonthId('');
+      formElement.reset();
+      await refresh();
+      notify('Church profile created.');
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function handleSwitchProfile(profileId: string) {
+    const profile = data.settings.profiles.find((item) => item.id === profileId);
+    if (!profile) return;
+    try {
+      await saveSettings({
+        ...data.settings,
+        churchName: profile.churchName,
+        parishes: profile.parishes,
+        activeProfileId: profile.id,
+      });
+      setEditingParish(null);
+      setSelectedMonthId('');
+      await refresh();
+      notify('Church profile switched.');
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function handleDeleteProfile(profile: ChurchProfile) {
+    if (data.settings.profiles.length <= 1) {
+      notify('Keep at least one church profile.', 'error');
+      return;
+    }
+    if (!confirm(`Delete church profile?\n\n${profile.churchName}`)) return;
+    const remainingProfiles = data.settings.profiles.filter((item) => item.id !== profile.id);
+    const activeProfile = profile.id === data.settings.activeProfileId
+      ? remainingProfiles[0]
+      : data.settings.profiles.find((item) => item.id === data.settings.activeProfileId);
+    if (!activeProfile) return;
+    try {
+      await saveSettings({
+        ...data.settings,
+        churchName: activeProfile.churchName,
+        parishes: activeProfile.parishes,
+        activeProfileId: activeProfile.id,
+        profiles: remainingProfiles,
+      });
+      setEditingParish(null);
+      setSelectedMonthId('');
+      await refresh();
+      notify('Church profile deleted.');
     } catch (error) {
       reportError(error);
     }
@@ -347,13 +459,11 @@ function App() {
       id: editingParish?.id ?? makeId('parish'),
       name,
     };
+    const nextParishes = editingParish
+      ? data.settings.parishes.map((item) => (item.id === editingParish.id ? parish : item))
+      : [...(data.settings.parishes ?? []), parish];
     try {
-      await saveSettings({
-        ...data.settings,
-        parishes: editingParish
-          ? data.settings.parishes.map((item) => (item.id === editingParish.id ? parish : item))
-          : [...(data.settings.parishes ?? []), parish],
-      });
+      await saveSettings(withActiveProfile(data.settings, data.settings.churchName, nextParishes));
       setEditingParish(null);
       formElement.reset();
       await refresh();
@@ -365,14 +475,32 @@ function App() {
 
   async function handleDeleteParish(parish: Parish) {
     if (!confirm(`Delete parish?\n\n${parish.name}\n\nExisting records will stay saved but will no longer appear under this parish.`)) return;
+    const nextParishes = data.settings.parishes.filter((item) => item.id !== parish.id);
     try {
-      await saveSettings({
-        ...data.settings,
-        parishes: data.settings.parishes.filter((item) => item.id !== parish.id),
-      });
+      await saveSettings(withActiveProfile(data.settings, data.settings.churchName, nextParishes));
       if (editingParish?.id === parish.id) setEditingParish(null);
       await refresh();
       notify('Parish deleted.');
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function handleSaveParishTotals(parish: Parish, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedMonth || parish.id === MAIN_PARISH_ID) return;
+    const form = new FormData(event.currentTarget);
+    const totals = Object.fromEntries(data.settings.categories.map((category) => [category.id, toAmount(form.get(category.id))]));
+    try {
+      await upsertMonth({
+        ...selectedMonth,
+        manualParishTotals: {
+          ...(selectedMonth.manualParishTotals ?? {}),
+          [parish.id]: totals,
+        },
+      });
+      await refresh();
+      notify(`${parish.name} totals saved.`);
     } catch (error) {
       reportError(error);
     }
@@ -462,7 +590,7 @@ function App() {
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
           {view === 'dashboard' && (
             <Dashboard
-              data={data}
+              data={{ ...data, months: profileMonths }}
               selectedMonth={selectedMonth}
               totals={{ totalCashIncome, totalTransfers, totalIncome, totalRemittance, totalExpenditure, impressBalance }}
               onCreateMonth={handleCreateMonth}
@@ -485,13 +613,17 @@ function App() {
               parishSummaries={parishSummaries}
               editingIncome={editingIncome}
               editingTransfer={editingTransfer}
+              editingParish={editingParish}
               summary={{ totalCashIncome, totalTransfers, totalIncome, totalRemittance }}
               onSaveIncome={handleSaveIncome}
               onSaveTransfer={handleSaveTransfer}
+              onSaveParish={handleSaveParish}
+              onSaveParishTotals={handleSaveParishTotals}
               onEditIncome={setEditingIncome}
               onEditTransfer={setEditingTransfer}
               onCancelIncome={() => setEditingIncome(null)}
               onCancelTransfer={() => setEditingTransfer(null)}
+              onCancelParish={() => setEditingParish(null)}
               onDeleteIncome={async (row) => {
                 if (!confirm(`Delete income record for ${row.date}?`)) return;
                 try {
@@ -520,8 +652,8 @@ function App() {
                   month: selectedMonth,
                   incomes: monthIncomes,
                   transfers: monthTransfers,
-                  expenditures: data.expenditures,
-                  impress: data.impress,
+                  expenditures: profileExpenditures,
+                  impress: profileImpress,
                 })
               }
             />
@@ -533,7 +665,7 @@ function App() {
 
           {view === 'expenditure' && (
             <ExpenditureView
-              records={data.expenditures}
+              records={profileExpenditures}
               editing={editingExpense}
               onSave={handleSaveExpense}
               onEdit={setEditingExpense}
@@ -574,12 +706,10 @@ function App() {
           {view === 'settings' && (
             <SettingsView
               data={data}
-              editingParish={editingParish}
               onSave={handleSaveSettings}
-              onSaveParish={handleSaveParish}
-              onEditParish={setEditingParish}
-              onCancelParish={() => setEditingParish(null)}
-              onDeleteParish={handleDeleteParish}
+              onCreateProfile={handleCreateProfile}
+              onSwitchProfile={handleSwitchProfile}
+              onDeleteProfile={handleDeleteProfile}
               onBackup={handleBackup}
               onRestore={handleRestore}
             />
@@ -712,13 +842,17 @@ function MonthView(props: {
   parishSummaries: ParishSummary[];
   editingIncome: WeeklyIncome | null;
   editingTransfer: TransferRecord | null;
+  editingParish: Parish | null;
   summary: Record<string, number>;
   onSaveIncome: (event: FormEvent<HTMLFormElement>) => void;
   onSaveTransfer: (event: FormEvent<HTMLFormElement>) => void;
+  onSaveParish: (event: FormEvent<HTMLFormElement>) => void;
+  onSaveParishTotals: (parish: Parish, event: FormEvent<HTMLFormElement>) => void;
   onEditIncome: (record: WeeklyIncome) => void;
   onEditTransfer: (record: TransferRecord) => void;
   onCancelIncome: () => void;
   onCancelTransfer: () => void;
+  onCancelParish: () => void;
   onDeleteIncome: (record: WeeklyIncome) => void;
   onDeleteTransfer: (record: TransferRecord) => void;
   onToggleStatus: () => void;
@@ -750,7 +884,13 @@ function MonthView(props: {
         <TotalsSection settings={props.settings} totals={props.totals} remittanceRows={props.remittanceRows} />
       </section>
       <TransferSection {...props} />
-      <ParishSummarySection summaries={props.parishSummaries} />
+      <ParishSummarySection
+        summaries={props.parishSummaries}
+        editingParish={props.editingParish}
+        onSaveParish={props.onSaveParish}
+        onSaveParishTotals={props.onSaveParishTotals}
+        onCancelParish={props.onCancelParish}
+      />
       <RedFormSection summaries={props.parishSummaries} />
     </>
   );
@@ -902,47 +1042,132 @@ function TotalsSection({ settings, totals, remittanceRows }: { settings: AppSett
   );
 }
 
-function ParishSummarySection({ summaries }: { summaries: ParishSummary[] }) {
+function ParishSummarySection({
+  summaries,
+  editingParish,
+  onSaveParish,
+  onCancelParish,
+  onSaveParishTotals,
+}: {
+  summaries: ParishSummary[];
+  editingParish: Parish | null;
+  onSaveParish: (event: FormEvent<HTMLFormElement>) => void;
+  onCancelParish: () => void;
+  onSaveParishTotals: (parish: Parish, event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const [draftTotals, setDraftTotals] = useState<Record<string, Record<string, string>>>({});
+
+  useEffect(() => {
+    setDraftTotals(Object.fromEntries(
+      summaries
+        .filter((summary) => summary.parish.id !== MAIN_PARISH_ID)
+        .map((summary) => [
+          summary.parish.id,
+          Object.fromEntries(summary.remittanceRows.map((row) => [row.category.id, row.total ? String(row.total) : ''])),
+        ]),
+    ));
+  }, [summaries]);
+
   return (
     <section className="panel overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-stone-200 p-4">
-        <Users size={18} />
-        <h3 className="text-lg font-bold">Parish Remittance Summaries</h3>
+      <div className="flex flex-col gap-3 border-b border-stone-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-2">
+          <Users size={18} />
+          <h3 className="text-lg font-bold">Parish Remittance Summaries</h3>
+        </div>
+        <form key={editingParish?.id ?? 'new-summary-parish'} onSubmit={onSaveParish} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input className="input w-full sm:w-72" name="parishName" defaultValue={editingParish?.name} placeholder="Add parish under main church" required />
+          <button className="btn-primary" type="submit"><Save size={17} /> {editingParish ? 'Save Parish' : 'Add Parish'}</button>
+          {editingParish && <button className="btn-secondary" type="button" onClick={onCancelParish}>Cancel</button>}
+        </form>
       </div>
       <div className="grid gap-4 p-4 xl:grid-cols-2">
         {summaries.map((summary) => (
           <div key={summary.parish.id} className="overflow-hidden rounded-md border border-stone-200">
-            <div className="bg-stone-100 px-3 py-2">
+            <div className="flex items-center justify-between gap-3 bg-stone-100 px-3 py-2">
               <h4 className="text-sm font-black uppercase">{summary.parish.name}</h4>
+              {summary.parish.id !== MAIN_PARISH_ID && <button className="btn-primary h-8 px-3" form={`parish-totals-${summary.parish.id}`} type="submit"><Save size={15} /> Save Totals</button>}
             </div>
-            <table className="w-full border-collapse">
-              <thead className="table-head">
-                <tr>
-                  <th className="px-3 py-2">Description</th>
-                  <th className="px-3 py-2">Total</th>
-                  <th className="px-3 py-2">Returns</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.remittanceRows.map((row) => (
-                  <tr key={row.category.id}>
-                    <td className="table-cell font-semibold">{row.category.name}</td>
-                    <td className="table-cell">{formatCurrency(row.total)}</td>
-                    <td className="table-cell">{row.category.appliesToRemittance ? formatCurrency(row.amount) : formatCurrency(row.total)}</td>
+            <form id={`parish-totals-${summary.parish.id}`} onSubmit={(event) => onSaveParishTotals(summary.parish, event)}>
+              <table className="w-full border-collapse">
+                <thead className="table-head">
+                  <tr>
+                    <th className="px-3 py-2">Description</th>
+                    <th className="px-3 py-2">Total</th>
+                    <th className="px-3 py-2">Returns</th>
                   </tr>
-                ))}
-                <tr>
-                  <td className="table-cell font-black">TOTAL</td>
-                  <td className="table-cell font-black">{formatCurrency(summary.totalIncome)}</td>
-                  <td className="table-cell font-black">{formatCurrency(summary.totalRemittance)}</td>
-                </tr>
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {summary.remittanceRows.map((row) => (
+                    <ParishSummaryRow
+                      key={row.category.id}
+                      parishId={summary.parish.id}
+                      row={row}
+                      draftValue={draftTotals[summary.parish.id]?.[row.category.id] ?? ''}
+                      onChange={(value) =>
+                        setDraftTotals((current) => ({
+                          ...current,
+                          [summary.parish.id]: { ...(current[summary.parish.id] ?? {}), [row.category.id]: value },
+                        }))
+                      }
+                    />
+                  ))}
+                  <tr>
+                    <td className="table-cell font-black">TOTAL</td>
+                    <td className="table-cell font-black">{formatCurrency(calculateDraftTotal(summary, draftTotals))}</td>
+                    <td className="table-cell font-black">{formatCurrency(calculateDraftReturns(summary, draftTotals))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </form>
           </div>
         ))}
       </div>
     </section>
   );
+}
+
+function ParishSummaryRow({
+  parishId,
+  row,
+  draftValue,
+  onChange,
+}: {
+  parishId: string;
+  row: ReturnType<typeof calculateRemittance>[number];
+  draftValue: string;
+  onChange: (value: string) => void;
+}) {
+  const isMainParish = parishId === MAIN_PARISH_ID;
+  const total = isMainParish ? row.total : toAmount(draftValue);
+  const returns = row.category.appliesToRemittance ? (total * row.category.remittanceRate) / 100 : total;
+
+  return (
+    <tr>
+      <td className="table-cell font-semibold">{row.category.name}</td>
+      <td className="table-cell">
+        {isMainParish ? (
+          formatCurrency(row.total)
+        ) : (
+          <input className="input h-8 max-w-36" name={row.category.id} inputMode="decimal" value={draftValue} onChange={(event) => onChange(event.target.value)} placeholder="0" />
+        )}
+      </td>
+      <td className="table-cell">{formatCurrency(returns)}</td>
+    </tr>
+  );
+}
+
+function calculateDraftTotal(summary: ParishSummary, draftTotals: Record<string, Record<string, string>>) {
+  if (summary.parish.id === MAIN_PARISH_ID) return summary.totalIncome;
+  return summary.remittanceRows.reduce((sum, row) => sum + toAmount(draftTotals[summary.parish.id]?.[row.category.id] ?? ''), 0);
+}
+
+function calculateDraftReturns(summary: ParishSummary, draftTotals: Record<string, Record<string, string>>) {
+  if (summary.parish.id === MAIN_PARISH_ID) return summary.totalRemittance;
+  return summary.remittanceRows.reduce((sum, row) => {
+    const total = toAmount(draftTotals[summary.parish.id]?.[row.category.id] ?? '');
+    return sum + (row.category.appliesToRemittance ? (total * row.category.remittanceRate) / 100 : total);
+  }, 0);
 }
 
 function RedFormSection({ summaries }: { summaries: ParishSummary[] }) {
@@ -1079,22 +1304,18 @@ function ImpressView({
 
 function SettingsView({
   data,
-  editingParish,
   onSave,
-  onSaveParish,
-  onEditParish,
-  onCancelParish,
-  onDeleteParish,
+  onCreateProfile,
+  onSwitchProfile,
+  onDeleteProfile,
   onBackup,
   onRestore,
 }: {
   data: AppData;
-  editingParish: Parish | null;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
-  onSaveParish: (event: FormEvent<HTMLFormElement>) => void;
-  onEditParish: (parish: Parish) => void;
-  onCancelParish: () => void;
-  onDeleteParish: (parish: Parish) => void;
+  onCreateProfile: (event: FormEvent<HTMLFormElement>) => void;
+  onSwitchProfile: (profileId: string) => void;
+  onDeleteProfile: (profile: ChurchProfile) => void;
   onBackup: () => void;
   onRestore: (file: File | undefined) => void;
 }) {
@@ -1105,9 +1326,52 @@ function SettingsView({
         <h2 className="mt-1 text-3xl font-bold">Settings</h2>
       </section>
       <section className="panel overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-stone-200 p-4">
+          <Users size={18} />
+          <h3 className="text-lg font-bold">Church Profiles</h3>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="overflow-auto">
+            <table className="w-full min-w-[560px] border-collapse">
+              <thead className="table-head">
+                <tr>
+                  <th className="px-3 py-2">Headquarter Church Parish</th>
+                  <th className="px-3 py-2">Sub-Parishes</th>
+                  <th className="px-3 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.settings.profiles.map((profile) => (
+                  <tr key={profile.id}>
+                    <td className="table-cell font-semibold">
+                      {profile.churchName}
+                      {profile.id === data.settings.activeProfileId && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">active</span>}
+                    </td>
+                    <td className="table-cell">{profile.parishes.length}</td>
+                    <td className="table-cell">
+                      <div className="flex flex-wrap gap-2">
+                        <button className="btn-secondary h-8 px-3" type="button" onClick={() => onSwitchProfile(profile.id)}>Use</button>
+                        <button className="btn-danger h-8 px-3" type="button" onClick={() => onDeleteProfile(profile)}><Trash2 size={15} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form onSubmit={onCreateProfile} className="rounded-md border border-stone-200 bg-stone-50 p-4">
+            <label className="text-sm font-semibold">
+              New Headquarter Church Parish
+              <input className="input mt-1 uppercase" name="profileChurchName" placeholder="HEADQUARTER CHURCH PARISH" required />
+            </label>
+            <button className="btn-primary mt-4 w-full" type="submit"><Plus size={17} /> Create Profile</button>
+          </form>
+        </div>
+      </section>
+      <section className="panel overflow-hidden">
         <form onSubmit={onSave}>
           <div className="border-b border-stone-200 p-4">
-            <label className="text-sm font-semibold">Church Name<input className="input mt-1 max-w-xl" name="churchName" defaultValue={data.settings.churchName} required /></label>
+            <label className="text-sm font-semibold">Active Headquarter Church Parish<input className="input mt-1 max-w-xl" name="churchName" defaultValue={data.settings.churchName} required /></label>
           </div>
           <div className="overflow-auto">
             <table className="w-full border-collapse">
@@ -1135,37 +1399,6 @@ function SettingsView({
             <label className="btn-secondary cursor-pointer"><Upload size={17} /> Restore Data<input className="hidden" type="file" accept="application/json" onChange={(event) => onRestore(event.target.files?.[0])} /></label>
           </div>
         </form>
-      </section>
-      <section className="panel overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-stone-200 p-4">
-          <Users size={18} />
-          <h3 className="text-lg font-bold">Parishes Under Church</h3>
-        </div>
-        <form key={editingParish?.id ?? 'new-parish'} onSubmit={onSaveParish} className="grid gap-3 border-b border-stone-200 bg-stone-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <label className="text-sm font-semibold">
-            Parish Name
-            <input className="input mt-1 uppercase" name="parishName" defaultValue={editingParish?.name} placeholder="HOUSE OF PRAISE PARISH" required />
-          </label>
-          <div className="flex items-end gap-2">
-            <button className="btn-primary" type="submit"><Save size={17} /> {editingParish ? 'Save Parish' : 'Add Parish'}</button>
-            {editingParish && <button className="btn-secondary" type="button" onClick={onCancelParish}>Cancel</button>}
-          </div>
-        </form>
-        <ResponsiveTable headers={['Parish', 'Actions']}>
-          {(data.settings.parishes ?? []).map((parish) => (
-            <tr key={parish.id}>
-              <td className="table-cell font-semibold">{parish.name}</td>
-              <td className="table-cell">
-                <RowActions onEdit={() => onEditParish(parish)} onDelete={() => onDeleteParish(parish)} />
-              </td>
-            </tr>
-          ))}
-          {!data.settings.parishes?.length && (
-            <tr>
-              <td className="table-cell text-stone-500" colSpan={2}>No sub-parishes added yet.</td>
-            </tr>
-          )}
-        </ResponsiveTable>
       </section>
       <div className="panel p-4">
         <p className="flex items-center gap-2 text-sm text-stone-600"><Database size={16} /> Data is saved in this browser with IndexedDB. No backend, no API, no server database.</p>

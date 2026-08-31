@@ -10,15 +10,25 @@ export type Parish = {
   name: string;
 };
 
+export type ChurchProfile = {
+  id: string;
+  churchName: string;
+  parishes: Parish[];
+  createdAt: string;
+};
+
 export type MonthlyRecord = {
   id: string;
+  profileId?: string;
   heading: string;
   status: 'active' | 'completed';
   createdAt: string;
+  manualParishTotals?: Record<string, Record<string, number>>;
 };
 
 export type WeeklyIncome = {
   id: string;
+  profileId?: string;
   monthId: string;
   parishId?: string;
   date: string;
@@ -27,6 +37,7 @@ export type WeeklyIncome = {
 
 export type TransferRecord = {
   id: string;
+  profileId?: string;
   monthId: string;
   parishId?: string;
   name: string;
@@ -37,6 +48,7 @@ export type TransferRecord = {
 
 export type ExpenditureRecord = {
   id: string;
+  profileId?: string;
   date: string;
   beneficiary: string;
   purpose: string;
@@ -45,6 +57,7 @@ export type ExpenditureRecord = {
 
 export type ImpressRecord = {
   id: string;
+  profileId?: string;
   date: string;
   particulars: string;
   debit: number;
@@ -54,6 +67,8 @@ export type ImpressRecord = {
 export type AppSettings = {
   churchName: string;
   parishes: Parish[];
+  activeProfileId: string;
+  profiles: ChurchProfile[];
   categories: IncomeCategory[];
 };
 
