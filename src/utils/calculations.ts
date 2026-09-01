@@ -83,13 +83,13 @@ export function calculateRedFormRows(totals: Record<string, number>) {
 }
 
 export function calculateImpressLedger(records: ImpressRecord[]) {
-  let balance = 0;
   return [...records]
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
-    .map((record) => {
-      balance = balance + record.credit - record.debit;
-      return { ...record, balance };
-    });
+    .map((record) => ({ ...record, balance: record.credit - record.debit }));
+}
+
+export function calculateImpressBalance(records: ImpressRecord[]) {
+  return records.reduce((balance, record) => balance + record.credit - record.debit, 0);
 }
 
 export function makeId(prefix: string): string {

@@ -47,6 +47,7 @@ import type {
 import {
   MAIN_PARISH_ID,
   calculateCategoryTotals,
+  calculateImpressBalance,
   calculateImpressLedger,
   calculateRedFormRows,
   calculateRemittance,
@@ -58,7 +59,7 @@ import {
   sumAmounts,
   toAmount,
 } from './utils/calculations';
-import { exportMonthPdf } from './utils/pdf';
+import { exportExpenditurePdf, exportImpressPdf, exportMonthPdf } from './utils/pdf';
 
 type View = 'dashboard' | 'month' | 'expenditure' | 'impress' | 'settings';
 type Toast = { message: string; tone: 'success' | 'error' };
@@ -206,7 +207,7 @@ function App() {
   const totalRemittance = remittanceRows.reduce((sum, row) => sum + row.amount, 0);
   const totalExpenditure = profileExpenditures.reduce((sum, row) => sum + row.amount, 0);
   const impressLedger = calculateImpressLedger(profileImpress);
-  const impressBalance = impressLedger.at(-1)?.balance ?? 0;
+  const impressBalance = calculateImpressBalance(profileImpress);
 
   async function handleCreateMonth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -346,7 +347,7 @@ function App() {
       setEditingImpress(null);
       formElement.reset();
       await refresh();
-      notify(editingImpress ? 'Impress record updated.' : 'Impress record added.');
+      notify(editingImpress ? 'Imprest record updated.' : 'Imprest record added.');
     } catch (error) {
       reportError(error);
     }
@@ -549,7 +550,7 @@ function App() {
           <NavButton icon={<LayoutDashboard size={18} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
           <NavButton icon={<Banknote size={18} />} label="Monthly Records" active={view === 'month'} onClick={() => setView('month')} />
           <NavButton icon={<ReceiptText size={18} />} label="Church Expenditure" active={view === 'expenditure'} onClick={() => setView('expenditure')} />
-          <NavButton icon={<WalletCards size={18} />} label="Church Impress" active={view === 'impress'} onClick={() => setView('impress')} />
+          <NavButton icon={<WalletCards size={18} />} label="Church Imprest" active={view === 'impress'} onClick={() => setView('impress')} />
           <NavButton icon={<Settings size={18} />} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
         </nav>
         <div className="px-3">
@@ -581,7 +582,7 @@ function App() {
               <option value="dashboard">Dashboard</option>
               <option value="month">Monthly Records</option>
               <option value="expenditure">Expenditure</option>
-              <option value="impress">Impress</option>
+              <option value="impress">Imprest</option>
               <option value="settings">Settings</option>
             </select>
           </div>
@@ -670,6 +671,7 @@ function App() {
               onSave={handleSaveExpense}
               onEdit={setEditingExpense}
               onCancel={() => setEditingExpense(null)}
+              onExportPdf={() => exportExpenditurePdf(data.settings, profileExpenditures)}
               onDelete={async (row) => {
                 if (!confirm(`Delete expenditure?\n\n${row.beneficiary}\n${row.purpose}\n${formatCurrency(row.amount)}`)) return;
                 try {
@@ -690,12 +692,13 @@ function App() {
               onSave={handleSaveImpress}
               onEdit={setEditingImpress}
               onCancel={() => setEditingImpress(null)}
+              onExportPdf={() => exportImpressPdf(data.settings, profileImpress)}
               onDelete={async (row) => {
-                if (!confirm(`Delete impress record?\n\n${row.particulars}`)) return;
+                if (!confirm(`Delete imprest record?\n\n${row.particulars}`)) return;
                 try {
                   await deleteImpress(row.id);
                   await refresh();
-                  notify('Impress record deleted.');
+                  notify('Imprest record deleted.');
                 } catch (error) {
                   reportError(error);
                 }
@@ -779,7 +782,7 @@ function Dashboard({
         <Metric label="Total Income" value={totals.totalIncome} />
         <Metric label="Remittance" value={totals.totalRemittance} />
         <Metric label="Expenditure" value={totals.totalExpenditure} />
-        <Metric label="Impress Balance" value={totals.impressBalance} />
+        <Metric label="Imprest Balance" value={totals.impressBalance} />
       </section>
       <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="panel overflow-hidden">
@@ -986,13 +989,13 @@ function TransferSection({
           {editingTransfer && <button className="btn-secondary" type="button" onClick={onCancelTransfer}>Cancel</button>}
         </div>
       </form>
-      <ResponsiveTable headers={['Parish', 'Name', 'Date', 'Received', 'Allocated', 'Difference', 'Actions']}>
+      <ResponsiveTable headers={['Category Breakdown', 'Name', 'Date', 'Received', 'Allocated', 'Difference', 'Actions']}>
         {transfers.map((row) => {
           const allocated = sumAmounts(row.allocations);
           const difference = calculateTransferDifference(row);
           return (
             <tr key={row.id}>
-              <td className="table-cell font-semibold">{getParishName(settings, row.parishId)}</td>
+              <td className="table-cell text-xs leading-5">{formatBreakdown(settings, row.allocations)}</td>
               <td className="table-cell font-semibold">{row.name}</td>
               <td className="table-cell">{row.date}</td>
               <td className="table-cell">{formatCurrency(row.amountReceived)}</td>
@@ -1218,6 +1221,7 @@ function ExpenditureView({
   onSave,
   onEdit,
   onCancel,
+  onExportPdf,
   onDelete,
 }: {
   records: ExpenditureRecord[];
@@ -1225,12 +1229,14 @@ function ExpenditureView({
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onEdit: (record: ExpenditureRecord) => void;
   onCancel: () => void;
+  onExportPdf: () => void;
   onDelete: (record: ExpenditureRecord) => void;
 }) {
   return (
     <CrudPanel
       title="Church Expenditure"
       total={records.reduce((sum, row) => sum + row.amount, 0)}
+      action={<button className="btn-secondary" type="button" onClick={onExportPdf}><FileDown size={17} /> Export PDF</button>}
       form={
         <form onSubmit={onSave} className="grid gap-3 bg-stone-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm font-semibold">Date<input className="input mt-1" type="date" name="date" defaultValue={editing?.date} required /></label>
@@ -1262,6 +1268,7 @@ function ImpressView({
   onSave,
   onEdit,
   onCancel,
+  onExportPdf,
   onDelete,
 }: {
   records: Array<ImpressRecord & { balance: number }>;
@@ -1269,30 +1276,32 @@ function ImpressView({
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onEdit: (record: ImpressRecord) => void;
   onCancel: () => void;
+  onExportPdf: () => void;
   onDelete: (record: ImpressRecord) => void;
 }) {
   return (
     <CrudPanel
-      title="Church Impress"
-      total={records.at(-1)?.balance ?? 0}
+      title="Church Imprest"
+      total={records.reduce((sum, row) => sum + row.balance, 0)}
       totalLabel="Current Balance"
+      action={<button className="btn-secondary" type="button" onClick={onExportPdf}><FileDown size={17} /> Export PDF</button>}
       form={
         <form onSubmit={onSave} className="grid gap-3 bg-stone-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm font-semibold">Date<input className="input mt-1" type="date" name="date" defaultValue={editing?.date} required /></label>
           <label className="text-sm font-semibold lg:col-span-2">Particulars<input className="input mt-1" name="particulars" defaultValue={editing?.particulars} required /></label>
-          <label className="text-sm font-semibold">Debit<input className="input mt-1" name="debit" inputMode="decimal" defaultValue={editing?.debit || ''} /></label>
-          <label className="text-sm font-semibold">Credit<input className="input mt-1" name="credit" inputMode="decimal" defaultValue={editing?.credit || ''} /></label>
+          <label className="text-sm font-semibold">Money Delegated (Cr)<input className="input mt-1" name="credit" inputMode="decimal" defaultValue={editing?.credit || ''} /></label>
+          <label className="text-sm font-semibold">Money Spent (Dr)<input className="input mt-1" name="debit" inputMode="decimal" defaultValue={editing?.debit || ''} /></label>
           <div className="flex gap-2 lg:col-span-5"><button className="btn-primary"><Save size={17} /> Save</button>{editing && <button className="btn-secondary" type="button" onClick={onCancel}>Cancel</button>}</div>
         </form>
       }
     >
-      <ResponsiveTable headers={['Date', 'Particulars', 'Debit', 'Credit', 'Balance', 'Actions']}>
+      <ResponsiveTable headers={['Date', 'Particulars', 'Money Delegated (Cr)', 'Money Spent (Dr)', 'Balance', 'Actions']}>
         {records.map((row) => (
           <tr key={row.id}>
             <td className="table-cell">{row.date}</td>
             <td className="table-cell font-semibold">{row.particulars}</td>
-            <td className="table-cell">{formatCurrency(row.debit)}</td>
             <td className="table-cell">{formatCurrency(row.credit)}</td>
+            <td className="table-cell">{formatCurrency(row.debit)}</td>
             <td className="table-cell font-bold">{formatCurrency(row.balance)}</td>
             <td className="table-cell"><RowActions onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} /></td>
           </tr>
@@ -1407,7 +1416,7 @@ function SettingsView({
   );
 }
 
-function CrudPanel({ title, total, totalLabel = 'Total', form, children }: { title: string; total: number; totalLabel?: string; form: React.ReactNode; children: React.ReactNode }) {
+function CrudPanel({ title, total, totalLabel = 'Total', action, form, children }: { title: string; total: number; totalLabel?: string; action?: React.ReactNode; form: React.ReactNode; children: React.ReactNode }) {
   return (
     <>
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1415,7 +1424,10 @@ function CrudPanel({ title, total, totalLabel = 'Total', form, children }: { tit
           <p className="text-sm font-bold uppercase text-palm">{totalLabel}</p>
           <h2 className="mt-1 text-3xl font-bold">{title}</h2>
         </div>
-        <Metric label={totalLabel} value={total} />
+        <div className="flex flex-wrap items-end gap-3">
+          {action}
+          <Metric label={totalLabel} value={total} />
+        </div>
       </section>
       <section className="panel overflow-hidden">
         {form}
@@ -1432,6 +1444,14 @@ function Metric({ label, value }: { label: string; value: number }) {
       <p className="mt-2 break-words text-xl font-black">{formatCurrency(value)}</p>
     </div>
   );
+}
+
+function formatBreakdown(settings: AppSettings, amounts: Record<string, number>) {
+  const parts = settings.categories
+    .map((category) => ({ name: category.name, amount: amounts[category.id] || 0 }))
+    .filter((item) => item.amount > 0)
+    .map((item) => `${item.name}: ${formatCurrency(item.amount)}`);
+  return parts.length ? parts.join(', ') : '-';
 }
 
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
