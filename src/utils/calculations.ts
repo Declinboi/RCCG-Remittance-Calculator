@@ -66,13 +66,13 @@ export function getParishName(settings: AppSettings, parishId?: string): string 
 
 export function calculateRedFormRows(totals: Record<string, number>) {
   const rows = [
-    { label: 'GENERAL TITHE (58%)', total: totals.generalTithe || 0, rate: 58 },
-    { label: 'MINISTERS TITHE 62%', total: totals.ministersTithe || 0, rate: 62 },
-    { label: 'THANKSGIVING (70%)', total: totals.thanksgiving || 0, rate: 70 },
+    { label: 'GENERAL TITHE (48%)', total: totals.generalTithe || 0, rate: 48 },
+    { label: 'MINISTERS TITHE 48%', total: totals.ministersTithe || 0, rate: 48 },
+    { label: 'THANKSGIVING (40%)', total: totals.thanksgiving || 0, rate: 40 },
     { label: 'THANKSGIVING (1%)', total: totals.thanksgiving || 0, rate: 1 },
     { label: 'SPECIAL THANKSGIVING (100%)', total: totals.specialThanksgiving || 0, rate: 100 },
     { label: 'SLO (30%)', total: totals.slo || 0, rate: 30 },
-    { label: 'CRM (60%)', total: totals.crm || 0, rate: 60 },
+    { label: 'CRM (40%)', total: totals.crm || 0, rate: 40 },
     { label: 'GOSPEL FUND (25%)', total: totals.gospelFund || 0, rate: 25 },
     { label: 'FIRST FRUIT', total: totals.firstFruit || 0, rate: 90 },
     { label: '1ST BORN REDEMPTION', total: totals.firstBornRedemption || 0, rate: 100 },

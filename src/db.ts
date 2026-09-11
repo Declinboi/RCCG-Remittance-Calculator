@@ -50,6 +50,8 @@ function normalizeSettings(settings?: AppSettings): AppSettings {
   const defaultCategoryIds = new Set(defaultSettings.categories.map((category) => category.id));
   const legacyCategoryIds = new Set(['thanksgivingSpecial', 'crmTuesday', 'crmThursday']);
   const customCategories = savedCategories.filter((category) => !defaultCategoryIds.has(category.id) && !legacyCategoryIds.has(category.id));
+  // Rates that changed on 2026-09-11: pick up the new default unless the treasurer already customized the old value.
+  const supersededRates: Record<string, number> = { generalTithe: 58, ministersTithe: 62, thanksgiving: 70 };
   const churchName = settings?.churchName || defaultSettings.churchName;
   const parishes = settings?.parishes ?? defaultSettings.parishes;
   const existingProfiles = settings?.profiles ?? [];
@@ -70,6 +72,7 @@ function normalizeSettings(settings?: AppSettings): AppSettings {
         const savedCategory = savedCategoryById.get(category.id);
         if (!savedCategory) return category;
         if (category.id === 'specialThanksgiving' && savedCategory.remittanceRate === 1) return category;
+        if (savedCategory.remittanceRate === supersededRates[category.id]) return category;
         return savedCategory;
       }),
       ...customCategories,

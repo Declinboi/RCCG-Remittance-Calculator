@@ -1,14 +1,14 @@
 import type { AppSettings, IncomeCategory } from '../types';
 
 export const defaultCategories: IncomeCategory[] = [
-  { id: 'generalTithe', name: 'General Tithe', remittanceRate: 58, appliesToRemittance: true },
-  { id: 'ministersTithe', name: 'Ministers Tithe', remittanceRate: 62, appliesToRemittance: true },
-  { id: 'thanksgiving', name: 'Thanksgiving', remittanceRate: 70, appliesToRemittance: true },
+  { id: 'generalTithe', name: 'General Tithe', remittanceRate: 48, appliesToRemittance: true },
+  { id: 'ministersTithe', name: 'Ministers Tithe', remittanceRate: 48, appliesToRemittance: true },
+  { id: 'thanksgiving', name: 'Thanksgiving', remittanceRate: 40, appliesToRemittance: true },
   { id: 'annualThanksgiving', name: 'Annual Thanksgiving', remittanceRate: 70, appliesToRemittance: true },
   { id: 'specialThanksgiving', name: 'Special Thanksgiving', remittanceRate: 100, appliesToRemittance: true },
   { id: 'slo', name: 'SLO', remittanceRate: 30, appliesToRemittance: true },
   { id: 'project', name: 'Project', remittanceRate: 0, appliesToRemittance: false },
-  { id: 'crm', name: 'CRM', remittanceRate: 60, appliesToRemittance: true },
+  { id: 'crm', name: 'CRM', remittanceRate: 40, appliesToRemittance: true },
   { id: 'gospelFund', name: 'Gospel Fund', remittanceRate: 25, appliesToRemittance: true },
   { id: 'goodWomen', name: 'Good Women', remittanceRate: 0, appliesToRemittance: false },
   { id: 'mission', name: 'Mission', remittanceRate: 0, appliesToRemittance: false },
