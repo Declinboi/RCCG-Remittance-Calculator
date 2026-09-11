@@ -64,17 +64,29 @@ export function getParishName(settings: AppSettings, parishId?: string): string 
   return getAllParishes(settings).find((parish) => parish.id === (parishId ?? MAIN_PARISH_ID))?.name ?? `${settings.churchName} PARISH`;
 }
 
-export function calculateRedFormRows(totals: Record<string, number>) {
+export function calculateRedFormRows(totals: Record<string, number>, settings: AppSettings) {
+  const rateFor = (categoryId: string, fallback: number) =>
+    settings.categories.find((category) => category.id === categoryId)?.remittanceRate ?? fallback;
+
+  const generalTitheRate = rateFor('generalTithe', 48);
+  const ministersTitheRate = rateFor('ministersTithe', 48);
+  const thanksgivingRate = rateFor('thanksgiving', 40);
+  const specialThanksgivingRate = rateFor('specialThanksgiving', 100);
+  const sloRate = rateFor('slo', 30);
+  const crmRate = rateFor('crm', 40);
+  const gospelFundRate = rateFor('gospelFund', 25);
+  const firstFruitRate = rateFor('firstFruit', 90);
+
   const rows = [
-    { label: 'GENERAL TITHE (48%)', total: totals.generalTithe || 0, rate: 48 },
-    { label: 'MINISTERS TITHE 48%', total: totals.ministersTithe || 0, rate: 48 },
-    { label: 'THANKSGIVING (40%)', total: totals.thanksgiving || 0, rate: 40 },
+    { label: `GENERAL TITHE (${generalTitheRate}%)`, total: totals.generalTithe || 0, rate: generalTitheRate },
+    { label: `MINISTERS TITHE ${ministersTitheRate}%`, total: totals.ministersTithe || 0, rate: ministersTitheRate },
+    { label: `THANKSGIVING (${thanksgivingRate}%)`, total: totals.thanksgiving || 0, rate: thanksgivingRate },
     { label: 'THANKSGIVING (1%)', total: totals.thanksgiving || 0, rate: 1 },
-    { label: 'SPECIAL THANKSGIVING (100%)', total: totals.specialThanksgiving || 0, rate: 100 },
-    { label: 'SLO (30%)', total: totals.slo || 0, rate: 30 },
-    { label: 'CRM (40%)', total: totals.crm || 0, rate: 40 },
-    { label: 'GOSPEL FUND (25%)', total: totals.gospelFund || 0, rate: 25 },
-    { label: 'FIRST FRUIT', total: totals.firstFruit || 0, rate: 90 },
+    { label: `SPECIAL THANKSGIVING (${specialThanksgivingRate}%)`, total: totals.specialThanksgiving || 0, rate: specialThanksgivingRate },
+    { label: `SLO (${sloRate}%)`, total: totals.slo || 0, rate: sloRate },
+    { label: `CRM (${crmRate}%)`, total: totals.crm || 0, rate: crmRate },
+    { label: `GOSPEL FUND (${gospelFundRate}%)`, total: totals.gospelFund || 0, rate: gospelFundRate },
+    { label: 'FIRST FRUIT', total: totals.firstFruit || 0, rate: firstFruitRate },
     { label: '1ST BORN REDEMPTION', total: totals.firstBornRedemption || 0, rate: 100 },
     { label: 'CONGRESS T/G', total: totals.annualThanksgiving || 0, rate: 50 },
   ];

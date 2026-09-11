@@ -113,7 +113,7 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
     });
 
     sectionTitle(doc, `${parish.name} Red Form`, colors.brick);
-    const redForm = calculateRedFormRows(parishTotals);
+    const redForm = calculateRedFormRows(parishTotals, settings);
     autoTable(doc, {
       startY: nextY(doc),
       margin: { left: margin, right: margin },

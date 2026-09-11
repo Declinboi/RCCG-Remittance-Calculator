@@ -181,7 +181,7 @@ function App() {
         const totals = parish.id === MAIN_PARISH_ID
           ? automaticTotals
           : Object.fromEntries(data.settings.categories.map((category) => [category.id, manualTotals[category.id] ?? automaticTotals[category.id] ?? 0]));
-        const redFormRows = calculateRedFormRows(totals);
+        const redFormRows = calculateRedFormRows(totals, data.settings);
         const remittanceRows = calculateRemittance(totals, data.settings);
         const totalIncome = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
         const totalTransfers = monthTransfers
