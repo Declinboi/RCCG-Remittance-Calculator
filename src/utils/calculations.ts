@@ -24,6 +24,7 @@ export function sumAmounts(amounts: Record<string, number>): number {
 function getCategoryAmount(amounts: Record<string, number>, categoryId: string): number {
   const amount = amounts[categoryId] || 0;
   if (categoryId === 'specialThanksgiving') return amount + (amounts.thanksgivingSpecial || 0);
+  if (categoryId === 'crm') return amount + (amounts.crmTuesday || 0) + (amounts.crmThursday || 0);
   return amount;
 }
 
@@ -64,7 +65,6 @@ export function getParishName(settings: AppSettings, parishId?: string): string 
 }
 
 export function calculateRedFormRows(totals: Record<string, number>) {
-  const crmTotal = (totals.crmTuesday || 0) + (totals.crmThursday || 0);
   const rows = [
     { label: 'GENERAL TITHE (58%)', total: totals.generalTithe || 0, rate: 58 },
     { label: 'MINISTERS TITHE 62%', total: totals.ministersTithe || 0, rate: 62 },
@@ -72,7 +72,7 @@ export function calculateRedFormRows(totals: Record<string, number>) {
     { label: 'THANKSGIVING (1%)', total: totals.thanksgiving || 0, rate: 1 },
     { label: 'SPECIAL THANKSGIVING (100%)', total: totals.specialThanksgiving || 0, rate: 100 },
     { label: 'SLO (30%)', total: totals.slo || 0, rate: 30 },
-    { label: 'CRM (60%)', total: crmTotal, rate: 60 },
+    { label: 'CRM (60%)', total: totals.crm || 0, rate: 60 },
     { label: 'GOSPEL FUND (25%)', total: totals.gospelFund || 0, rate: 25 },
     { label: 'FIRST FRUIT', total: totals.firstFruit || 0, rate: 90 },
     { label: '1ST BORN REDEMPTION', total: totals.firstBornRedemption || 0, rate: 100 },

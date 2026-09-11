@@ -48,7 +48,8 @@ function normalizeSettings(settings?: AppSettings): AppSettings {
   const savedCategories = settings?.categories ?? [];
   const savedCategoryById = new Map(savedCategories.map((category) => [category.id, category]));
   const defaultCategoryIds = new Set(defaultSettings.categories.map((category) => category.id));
-  const customCategories = savedCategories.filter((category) => !defaultCategoryIds.has(category.id) && category.id !== 'thanksgivingSpecial');
+  const legacyCategoryIds = new Set(['thanksgivingSpecial', 'crmTuesday', 'crmThursday']);
+  const customCategories = savedCategories.filter((category) => !defaultCategoryIds.has(category.id) && !legacyCategoryIds.has(category.id));
   const churchName = settings?.churchName || defaultSettings.churchName;
   const parishes = settings?.parishes ?? defaultSettings.parishes;
   const existingProfiles = settings?.profiles ?? [];
