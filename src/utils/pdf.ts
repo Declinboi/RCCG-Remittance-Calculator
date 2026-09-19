@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { AppSettings, ExpenditureRecord, ImpressRecord, MonthlyRecord, Parish, TransferRecord, WeeklyIncome } from '../types';
 import {
   MAIN_PARISH_ID,
+  WEEK_NUMBERS,
   calculateCategoryTotals,
   calculateImpressBalance,
   calculateImpressLedger,
@@ -11,6 +12,7 @@ import {
   calculateTransferDifference,
   getAllParishes,
   getParishName,
+  getWeekNumber,
   sumAmounts,
 } from './calculations';
 
@@ -130,65 +132,75 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
     });
   });
 
-  if (incomes.length) {
-    sectionTitle(doc, 'Cash Income Entries', colors.leaf);
-    autoTable(doc, {
-      startY: nextY(doc),
-      margin: { left: margin, right: margin },
-      head: [['Parish', 'Date', 'Category Breakdown', 'Total']],
-      body: incomes.map((row) => [
-        getParishName(settings, row.parishId),
-        row.date,
-        describeAmounts(settings, row.amounts),
-        money(sumAmounts(row.amounts)),
-      ]),
-      showHead: 'firstPage',
-      theme: 'striped',
-      styles: tableStyles(8),
-      headStyles: headStyles(colors.leaf),
-      columnStyles: {
-        0: { cellWidth: 115 },
-        1: { cellWidth: 70 },
-        3: { halign: 'right', cellWidth: 70 },
-      },
-    });
-  }
+  WEEK_NUMBERS.forEach((week) => {
+    const weekIncomes = incomes.filter((row) => getWeekNumber(row.week) === week);
+    const weekTransfers = transfers.filter((row) => getWeekNumber(row.week) === week);
+    if (!weekIncomes.length && !weekTransfers.length) return;
 
-  if (transfers.length) {
-    const allocatedTotal = transfers.reduce((sum, row) => sum + sumAmounts(row.allocations), 0);
-    const transferDifferenceTotal = transfers.reduce((sum, row) => sum + calculateTransferDifference(row), 0);
-
-    sectionTitle(doc, 'Transfer Entries', colors.gold);
-    autoTable(doc, {
-      startY: nextY(doc),
-      margin: { left: margin, right: margin },
-      head: [['Category Breakdown', 'Name', 'Date', 'Received', 'Allocated', 'Difference']],
-      body: transfers.map((row) => {
-        const allocated = sumAmounts(row.allocations);
-        return [
-          describeAmounts(settings, row.allocations),
-          row.name,
+    if (weekIncomes.length) {
+      sectionTitle(doc, `Week ${week} Cash Income`, colors.leaf);
+      autoTable(doc, {
+        startY: nextY(doc),
+        margin: { left: margin, right: margin },
+        head: [['Parish', 'Date', 'Category Breakdown', 'Total']],
+        body: weekIncomes.map((row) => [
+          getParishName(settings, row.parishId),
           row.date,
-          money(row.amountReceived),
-          money(allocated),
-          money(calculateTransferDifference(row)),
-        ];
-      }),
-      showHead: 'firstPage',
-      foot: [['', '', 'TOTAL', money(transferTotal), money(allocatedTotal), money(transferDifferenceTotal)]],
-      showFoot: 'lastPage',
-      theme: 'grid',
-      styles: tableStyles(8),
-      headStyles: headStyles(colors.gold),
-      footStyles: footStyles(colors.gold),
-      columnStyles: {
-        0: { cellWidth: 150 },
-        3: { halign: 'right' },
-        4: { halign: 'right' },
-        5: { halign: 'right' },
-      },
-    });
-  }
+          describeAmounts(settings, row.amounts),
+          money(sumAmounts(row.amounts)),
+        ]),
+        showHead: 'firstPage',
+        foot: [['', '', 'TOTAL', money(weekIncomes.reduce((sum, row) => sum + sumAmounts(row.amounts), 0))]],
+        showFoot: 'lastPage',
+        theme: 'striped',
+        styles: tableStyles(8),
+        headStyles: headStyles(colors.leaf),
+        footStyles: footStyles(colors.leaf),
+        columnStyles: {
+          0: { cellWidth: 115 },
+          1: { cellWidth: 70 },
+          3: { halign: 'right', cellWidth: 70 },
+        },
+      });
+    }
+
+    if (weekTransfers.length) {
+      const weekAllocatedTotal = weekTransfers.reduce((sum, row) => sum + sumAmounts(row.allocations), 0);
+      const weekReceivedTotal = weekTransfers.reduce((sum, row) => sum + row.amountReceived, 0);
+      const weekDifferenceTotal = weekTransfers.reduce((sum, row) => sum + calculateTransferDifference(row), 0);
+
+      sectionTitle(doc, `Week ${week} Transfers`, colors.gold);
+      autoTable(doc, {
+        startY: nextY(doc),
+        margin: { left: margin, right: margin },
+        head: [['Category Breakdown', 'Name', 'Date', 'Received', 'Allocated', 'Difference']],
+        body: weekTransfers.map((row) => {
+          const allocated = sumAmounts(row.allocations);
+          return [
+            describeAmounts(settings, row.allocations),
+            row.name,
+            row.date,
+            money(row.amountReceived),
+            money(allocated),
+            money(calculateTransferDifference(row)),
+          ];
+        }),
+        showHead: 'firstPage',
+        foot: [['', '', 'TOTAL', money(weekReceivedTotal), money(weekAllocatedTotal), money(weekDifferenceTotal)]],
+        showFoot: 'lastPage',
+        theme: 'grid',
+        styles: tableStyles(8),
+        headStyles: headStyles(colors.gold),
+        footStyles: footStyles(colors.gold),
+        columnStyles: {
+          0: { cellWidth: 150 },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right' },
+        },
+      });
+    }
+  });
 
   if (expenditures.length) {
     sectionTitle(doc, 'Church Expenditure', colors.brick);

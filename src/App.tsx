@@ -46,6 +46,7 @@ import type {
 } from './types';
 import {
   MAIN_PARISH_ID,
+  WEEK_NUMBERS,
   calculateCategoryTotals,
   calculateImpressBalance,
   calculateImpressLedger,
@@ -55,6 +56,7 @@ import {
   formatCurrency,
   getAllParishes,
   getParishName,
+  getWeekNumber,
   makeId,
   sumAmounts,
   toAmount,
@@ -99,6 +101,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('dashboard');
   const [selectedMonthId, setSelectedMonthId] = useState<string>('');
+  const [activeWeek, setActiveWeek] = useState<number>(1);
   const [editingIncome, setEditingIncome] = useState<WeeklyIncome | null>(null);
   const [editingTransfer, setEditingTransfer] = useState<TransferRecord | null>(null);
   const [editingExpense, setEditingExpense] = useState<ExpenditureRecord | null>(null);
@@ -133,6 +136,11 @@ function App() {
     setLoading(false);
   }
 
+  function handleSelectMonth(monthId: string) {
+    setSelectedMonthId(monthId);
+    setActiveWeek(1);
+  }
+
   useEffect(() => {
     refresh();
   }, []);
@@ -164,6 +172,14 @@ function App() {
       .filter((row) => (row.profileId ?? legacyProfileId) === activeProfileId && row.monthId === selectedMonth?.id)
       .sort((a, b) => a.date.localeCompare(b.date)),
     [activeProfileId, data.transfers, legacyProfileId, selectedMonth?.id],
+  );
+  const weekIncomes = useMemo(
+    () => monthIncomes.filter((row) => getWeekNumber(row.week) === activeWeek),
+    [monthIncomes, activeWeek],
+  );
+  const weekTransfers = useMemo(
+    () => monthTransfers.filter((row) => getWeekNumber(row.week) === activeWeek),
+    [monthTransfers, activeWeek],
   );
   const categoryTotals = useMemo(
     () => calculateCategoryTotals(monthIncomes, monthTransfers, data.settings),
@@ -224,7 +240,7 @@ function App() {
     };
     try {
       await upsertMonth(month);
-      setSelectedMonthId(month.id);
+      handleSelectMonth(month.id);
       setView('month');
       formElement.reset();
       await refresh();
@@ -267,6 +283,7 @@ function App() {
       profileId: activeProfileId,
       monthId: selectedMonth.id,
       parishId: String(form.get('parishId') ?? MAIN_PARISH_ID),
+      week: getWeekNumber(Number(form.get('week'))),
       date: String(form.get('date') ?? ''),
       amounts: Object.fromEntries(data.settings.categories.map((category) => [category.id, toAmount(form.get(category.id))])),
     };
@@ -291,6 +308,7 @@ function App() {
       profileId: activeProfileId,
       monthId: selectedMonth.id,
       parishId: String(form.get('parishId') ?? MAIN_PARISH_ID),
+      week: getWeekNumber(Number(form.get('week'))),
       name: String(form.get('name') ?? '').trim(),
       date: String(form.get('date') ?? ''),
       amountReceived: toAmount(form.get('amountReceived')),
@@ -560,7 +578,7 @@ function App() {
               <button
                 key={month.id}
                 onClick={() => {
-                  setSelectedMonthId(month.id);
+                  handleSelectMonth(month.id);
                   setView('month');
                 }}
                 className={`w-full rounded-md px-3 py-2 text-left text-sm font-semibold ${
@@ -596,7 +614,7 @@ function App() {
               totals={{ totalCashIncome, totalTransfers, totalIncome, totalRemittance, totalExpenditure, impressBalance }}
               onCreateMonth={handleCreateMonth}
               onOpenMonth={(month) => {
-                setSelectedMonthId(month.id);
+                handleSelectMonth(month.id);
                 setView('month');
               }}
             />
@@ -606,8 +624,10 @@ function App() {
             <MonthView
               settings={data.settings}
               month={selectedMonth}
-              incomes={monthIncomes}
-              transfers={monthTransfers}
+              incomes={weekIncomes}
+              transfers={weekTransfers}
+              activeWeek={activeWeek}
+              onSelectWeek={setActiveWeek}
               totals={categoryTotals}
               remittanceRows={remittanceRows}
               parishes={allParishes}
@@ -839,6 +859,8 @@ function MonthView(props: {
   month: MonthlyRecord;
   incomes: WeeklyIncome[];
   transfers: TransferRecord[];
+  activeWeek: number;
+  onSelectWeek: (week: number) => void;
   totals: Record<string, number>;
   remittanceRows: ReturnType<typeof calculateRemittance>;
   parishes: Parish[];
@@ -882,6 +904,7 @@ function MonthView(props: {
         <Metric label="Total Income" value={props.summary.totalIncome} />
         <Metric label="Remittance" value={props.summary.totalRemittance} />
       </section>
+      <WeekTabs activeWeek={props.activeWeek} onSelectWeek={props.onSelectWeek} />
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <IncomeSection {...props} />
         <TotalsSection settings={props.settings} totals={props.totals} remittanceRows={props.remittanceRows} />
@@ -899,27 +922,53 @@ function MonthView(props: {
   );
 }
 
+function WeekTabs({ activeWeek, onSelectWeek }: { activeWeek: number; onSelectWeek: (week: number) => void }) {
+  return (
+    <section className="flex flex-wrap gap-2">
+      {WEEK_NUMBERS.map((week) => (
+        <button
+          key={week}
+          type="button"
+          onClick={() => onSelectWeek(week)}
+          className={`rounded-md px-4 py-2 text-sm font-bold ${
+            activeWeek === week ? 'bg-ink text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-100'
+          }`}
+        >
+          Week {week}
+        </button>
+      ))}
+    </section>
+  );
+}
+
 function IncomeSection({
   settings,
   parishes,
   incomes,
+  activeWeek,
   editingIncome,
   onSaveIncome,
   onEditIncome,
   onDeleteIncome,
   onCancelIncome,
-}: Pick<Parameters<typeof MonthView>[0], 'settings' | 'parishes' | 'incomes' | 'editingIncome' | 'onSaveIncome' | 'onEditIncome' | 'onDeleteIncome' | 'onCancelIncome'>) {
+}: Pick<Parameters<typeof MonthView>[0], 'settings' | 'parishes' | 'incomes' | 'activeWeek' | 'editingIncome' | 'onSaveIncome' | 'onEditIncome' | 'onDeleteIncome' | 'onCancelIncome'>) {
   return (
     <section className="panel overflow-hidden">
       <div className="border-b border-stone-200 p-4">
-        <h3 className="text-lg font-bold">Weekly Cash Income</h3>
+        <h3 className="text-lg font-bold">Week {activeWeek} Cash Income</h3>
       </div>
-      <form onSubmit={onSaveIncome} className="border-b border-stone-200 bg-stone-50 p-4">
+      <form key={`income-${activeWeek}-${editingIncome?.id ?? 'new'}`} onSubmit={onSaveIncome} className="border-b border-stone-200 bg-stone-50 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-semibold">
             Parish
             <select className="input mt-1" name="parishId" defaultValue={editingIncome?.parishId ?? MAIN_PARISH_ID}>
               {parishes.map((parish) => <option key={parish.id} value={parish.id}>{parish.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold">
+            Week
+            <select className="input mt-1" name="week" defaultValue={editingIncome?.week ?? activeWeek}>
+              {WEEK_NUMBERS.map((week) => <option key={week} value={week}>Week {week}</option>)}
             </select>
           </label>
           <label className="text-sm font-semibold">Date<input className="input mt-1" type="date" name="date" defaultValue={editingIncome?.date} required /></label>
@@ -955,23 +1004,30 @@ function TransferSection({
   settings,
   parishes,
   transfers,
+  activeWeek,
   editingTransfer,
   onSaveTransfer,
   onEditTransfer,
   onDeleteTransfer,
   onCancelTransfer,
-}: Pick<Parameters<typeof MonthView>[0], 'settings' | 'parishes' | 'transfers' | 'editingTransfer' | 'onSaveTransfer' | 'onEditTransfer' | 'onDeleteTransfer' | 'onCancelTransfer'>) {
+}: Pick<Parameters<typeof MonthView>[0], 'settings' | 'parishes' | 'transfers' | 'activeWeek' | 'editingTransfer' | 'onSaveTransfer' | 'onEditTransfer' | 'onDeleteTransfer' | 'onCancelTransfer'>) {
   return (
     <section className="panel overflow-hidden">
       <div className="border-b border-stone-200 p-4">
-        <h3 className="text-lg font-bold">Transfers</h3>
+        <h3 className="text-lg font-bold">Week {activeWeek} Transfers</h3>
       </div>
-      <form onSubmit={onSaveTransfer} className="border-b border-stone-200 bg-stone-50 p-4">
+      <form key={`transfer-${activeWeek}-${editingTransfer?.id ?? 'new'}`} onSubmit={onSaveTransfer} className="border-b border-stone-200 bg-stone-50 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-semibold">
             Parish
             <select className="input mt-1" name="parishId" defaultValue={editingTransfer?.parishId ?? MAIN_PARISH_ID}>
               {parishes.map((parish) => <option key={parish.id} value={parish.id}>{parish.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold">
+            Week
+            <select className="input mt-1" name="week" defaultValue={editingTransfer?.week ?? activeWeek}>
+              {WEEK_NUMBERS.map((week) => <option key={week} value={week}>Week {week}</option>)}
             </select>
           </label>
           <label className="text-sm font-semibold">Name<input className="input mt-1" name="name" defaultValue={editingTransfer?.name} required /></label>

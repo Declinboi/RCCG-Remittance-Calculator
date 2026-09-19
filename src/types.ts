@@ -31,6 +31,7 @@ export type WeeklyIncome = {
   profileId?: string;
   monthId: string;
   parishId?: string;
+  week?: number;
   date: string;
   amounts: Record<string, number>;
 };
@@ -40,6 +41,7 @@ export type TransferRecord = {
   profileId?: string;
   monthId: string;
   parishId?: string;
+  week?: number;
   name: string;
   date: string;
   amountReceived: number;

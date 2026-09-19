@@ -2,6 +2,12 @@ import type { AppSettings, ImpressRecord, Parish, TransferRecord, WeeklyIncome }
 
 export const MAIN_PARISH_ID = 'main';
 
+export const WEEK_NUMBERS = [1, 2, 3, 4, 5] as const;
+
+export function getWeekNumber(value: number | undefined): number {
+  return value && WEEK_NUMBERS.includes(value as (typeof WEEK_NUMBERS)[number]) ? value : 1;
+}
+
 export const currency = new Intl.NumberFormat('en-NG', {
   style: 'currency',
   currency: 'NGN',
