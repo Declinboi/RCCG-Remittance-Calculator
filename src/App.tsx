@@ -75,6 +75,14 @@ type AppData = {
   impress: ImpressRecord[];
 };
 
+type WeeklySummary = {
+  week: number;
+  totalCashIncome: number;
+  totalTransfers: number;
+  totalIncome: number;
+  totalRemittance: number;
+};
+
 type ParishSummary = {
   parish: Parish;
   totals: Record<string, number>;
@@ -180,6 +188,25 @@ function App() {
   const weekTransfers = useMemo(
     () => monthTransfers.filter((row) => getWeekNumber(row.week) === activeWeek),
     [monthTransfers, activeWeek],
+  );
+  const weeklySummaries = useMemo(
+    () => WEEK_NUMBERS.map((week) => {
+      const incomesForWeek = monthIncomes.filter((row) => getWeekNumber(row.week) === week);
+      const transfersForWeek = monthTransfers.filter((row) => getWeekNumber(row.week) === week);
+      const totalsForWeek = calculateCategoryTotals(incomesForWeek, transfersForWeek, data.settings);
+      const remittanceForWeek = calculateRemittance(totalsForWeek, data.settings);
+      const weekTotalIncome = Object.values(totalsForWeek).reduce((sum, amount) => sum + amount, 0);
+      const weekTotalTransfers = transfersForWeek.reduce((sum, row) => sum + row.amountReceived, 0);
+      const weekTotalRemittance = remittanceForWeek.reduce((sum, row) => sum + row.amount, 0);
+      return {
+        week,
+        totalCashIncome: weekTotalIncome - weekTotalTransfers,
+        totalTransfers: weekTotalTransfers,
+        totalIncome: weekTotalIncome,
+        totalRemittance: weekTotalRemittance,
+      };
+    }),
+    [data.settings, monthIncomes, monthTransfers],
   );
   const categoryTotals = useMemo(
     () => calculateCategoryTotals(monthIncomes, monthTransfers, data.settings),
@@ -628,6 +655,7 @@ function App() {
               transfers={weekTransfers}
               activeWeek={activeWeek}
               onSelectWeek={setActiveWeek}
+              weeklySummaries={weeklySummaries}
               totals={categoryTotals}
               remittanceRows={remittanceRows}
               parishes={allParishes}
@@ -861,6 +889,7 @@ function MonthView(props: {
   transfers: TransferRecord[];
   activeWeek: number;
   onSelectWeek: (week: number) => void;
+  weeklySummaries: WeeklySummary[];
   totals: Record<string, number>;
   remittanceRows: ReturnType<typeof calculateRemittance>;
   parishes: Parish[];
@@ -907,7 +936,10 @@ function MonthView(props: {
       <WeekTabs activeWeek={props.activeWeek} onSelectWeek={props.onSelectWeek} />
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <IncomeSection {...props} />
-        <TotalsSection settings={props.settings} totals={props.totals} remittanceRows={props.remittanceRows} />
+        <div className="space-y-5">
+          <TotalsSection settings={props.settings} totals={props.totals} remittanceRows={props.remittanceRows} />
+          <WeeklySummarySection weeklySummaries={props.weeklySummaries} activeWeek={props.activeWeek} onSelectWeek={props.onSelectWeek} />
+        </div>
       </section>
       <TransferSection {...props} />
       <ParishSummarySection
@@ -1094,6 +1126,69 @@ function TotalsSection({ settings, totals, remittanceRows }: { settings: AppSett
                 </tr>
               );
             })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function WeeklySummarySection({
+  weeklySummaries,
+  activeWeek,
+  onSelectWeek,
+}: {
+  weeklySummaries: WeeklySummary[];
+  activeWeek: number;
+  onSelectWeek: (week: number) => void;
+}) {
+  const monthTotal = weeklySummaries.reduce(
+    (totals, row) => ({
+      totalCashIncome: totals.totalCashIncome + row.totalCashIncome,
+      totalTransfers: totals.totalTransfers + row.totalTransfers,
+      totalIncome: totals.totalIncome + row.totalIncome,
+      totalRemittance: totals.totalRemittance + row.totalRemittance,
+    }),
+    { totalCashIncome: 0, totalTransfers: 0, totalIncome: 0, totalRemittance: 0 },
+  );
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="border-b border-stone-200 p-4">
+        <h3 className="text-lg font-bold">Weekly Summary</h3>
+      </div>
+      <div className="max-h-[560px] overflow-auto">
+        <table className="w-full border-collapse">
+          <thead className="table-head">
+            <tr>
+              <th className="px-3 py-2">Week</th>
+              <th className="px-3 py-2">Cash</th>
+              <th className="px-3 py-2">Transfers</th>
+              <th className="px-3 py-2">Total</th>
+              <th className="px-3 py-2">Remit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {weeklySummaries.map((row) => (
+              <tr
+                key={row.week}
+                onClick={() => onSelectWeek(row.week)}
+                className={`cursor-pointer ${row.week === activeWeek ? 'bg-stone-100' : ''}`}
+              >
+                <td className="table-cell font-semibold">Week {row.week}</td>
+                <td className="table-cell">{formatCurrency(row.totalCashIncome)}</td>
+                <td className="table-cell">{formatCurrency(row.totalTransfers)}</td>
+                <td className="table-cell">{formatCurrency(row.totalIncome)}</td>
+                <td className="table-cell">{formatCurrency(row.totalRemittance)}</td>
+              </tr>
+            ))}
+            <tr className="bg-stone-50">
+              <td className="table-cell font-black">TOTAL</td>
+              <td className="table-cell font-black">{formatCurrency(monthTotal.totalCashIncome)}</td>
+              <td className="table-cell font-black">{formatCurrency(monthTotal.totalTransfers)}</td>
+              <td className="table-cell font-black">{formatCurrency(monthTotal.totalIncome)}</td>
+              <td className="table-cell font-black">{formatCurrency(monthTotal.totalRemittance)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
