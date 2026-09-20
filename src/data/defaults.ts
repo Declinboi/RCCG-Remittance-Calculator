@@ -25,6 +25,7 @@ export const defaultCategories: IncomeCategory[] = [
   { id: 'holyCommunion', name: 'Holy Communion', remittanceRate: 0, appliesToRemittance: false },
   { id: 'youthOffering', name: 'Youth Offering', remittanceRate: 0, appliesToRemittance: false },
   { id: 'churchProject', name: 'Church Project', remittanceRate: 0, appliesToRemittance: false },
+  { id: 'helpWeekendOffering', name: 'Help Weekend Offering', remittanceRate: 100, appliesToRemittance: true },
 ];
 
 export const defaultSettings: AppSettings = {

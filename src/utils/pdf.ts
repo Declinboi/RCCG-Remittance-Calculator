@@ -34,7 +34,19 @@ const colors = {
   brick: [159, 58, 56] as [number, number, number],
   paper: [247, 245, 239] as [number, number, number],
   line: [220, 214, 204] as [number, number, number],
+  yellow: [255, 224, 102] as [number, number, number],
 };
+
+const SUNDAY_SCHOOL_NAME = 'Sunday School';
+
+function highlightSundaySchoolRow(data: any) {
+  if (data.section !== 'body') return;
+  const raw = data.row.raw as unknown[];
+  if (raw[0] === SUNDAY_SCHOOL_NAME) {
+    data.cell.styles.fillColor = colors.yellow;
+    data.cell.styles.fontStyle = 'bold';
+  }
+}
 
 const margin = 40;
 
@@ -86,6 +98,7 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
       2: { halign: 'center' },
       3: { halign: 'right' },
     },
+    didParseCell: highlightSundaySchoolRow,
   });
 
   getAllParishes(settings).forEach((parish) => {
@@ -112,6 +125,7 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
       headStyles: headStyles(parish.id === MAIN_PARISH_ID ? colors.palm : colors.leaf),
       footStyles: footStyles(parish.id === MAIN_PARISH_ID ? colors.palm : colors.leaf),
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+      didParseCell: highlightSundaySchoolRow,
     });
 
     sectionTitle(doc, `${parish.name} Red Form`, colors.brick);
