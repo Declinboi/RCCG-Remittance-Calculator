@@ -151,6 +151,34 @@ export function exportMonthPdf({ settings, month, incomes, transfers, expenditur
     const weekTransfers = transfers.filter((row) => getWeekNumber(row.week) === week);
     if (!weekIncomes.length && !weekTransfers.length) return;
 
+    const weekTotals = calculateCategoryTotals(weekIncomes, weekTransfers, settings);
+    const weekRemittance = calculateRemittance(weekTotals, settings);
+    const weekIncomeTotal = Object.values(weekTotals).reduce((sum, amount) => sum + amount, 0);
+
+    sectionTitle(doc, `Week ${week} Summary`, colors.ink);
+    autoTable(doc, {
+      startY: nextY(doc),
+      margin: { left: margin, right: margin },
+      head: [['Category', 'Total', 'Remit']],
+      body: weekRemittance.map((row) => [
+        row.category.name,
+        money(row.total),
+        row.category.appliesToRemittance ? money(row.amount) : '-',
+      ]),
+      showHead: 'firstPage',
+      foot: [['TOTAL', money(weekIncomeTotal), money(weekRemittance.reduce((sum, row) => sum + row.amount, 0))]],
+      showFoot: 'lastPage',
+      theme: 'striped',
+      styles: tableStyles(8),
+      headStyles: headStyles(colors.ink),
+      footStyles: footStyles(colors.ink),
+      columnStyles: {
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+      },
+      didParseCell: highlightSundaySchoolRow,
+    });
+
     if (weekIncomes.length) {
       sectionTitle(doc, `Week ${week} Cash Income`, colors.leaf);
       autoTable(doc, {
